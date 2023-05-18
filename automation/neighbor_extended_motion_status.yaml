@@ -1,0 +1,144 @@
+blueprint:
+  name: Neighbor extended motion status
+  description: >
+    ## Neighbor extended motion status
+
+    Enables you to run *different automations* depending on whether
+    there is motion in *the room next door* or in *the main room*.
+
+
+    Requires a motion status dropdown helper for each room, which
+    is managed by this blueprint. You can then create your own
+    automations based on the motion status helper's state.
+
+
+    ---
+
+
+    ### Configuration:
+
+    The dropdown helper should have three states (case-sensitive):
+
+    - Motion
+
+    - Neighbor motion
+
+    - Clear
+
+    - Disabled
+
+  domain: automation
+  input:
+    main_motion_sensor:
+      name: Motion sensor
+      description: The main motion sensor.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+          - motion
+          - occupancy
+    main_motion_status:
+      name: Motion status helper
+      description: Should be a dropdown helper. See configuration in the introduction.
+      selector:
+        entity:
+          domain: input_select
+    neighboring_motion_statuses:
+      name: Neighboring rooms motion status
+      description: The neighboring room's motion status dropdown helpers. Configured the same way as the main one. **You can select multiple entities.**
+      selector:
+        entity:
+          domain: input_select
+          multiple: true
+
+variables:
+  # Make inputs available as script level variables
+  neighboring_motion_statuses: !input neighboring_motion_statuses
+
+trigger:
+  platform: state
+  entity_id: !input main_motion_sensor
+  from: "off"
+  to: "on"
+
+action:
+  - alias: "Set this room's motion status if it's not disabled"
+    if:
+      - condition: not
+        conditions:
+        - condition: state
+          entity_id: !input main_motion_status
+          state: Disabled
+    then:
+      - service: input_select.select_option
+        data:
+          option: Motion
+        target:
+          entity_id: !input main_motion_status
+
+  - alias: "Set neighboring rooms' motion statuses, if their state is clear"
+    if:
+      - condition: template
+        value_template: >-
+          {% set statusesToUpdate = expand(neighboring_motion_statuses) |
+          selectattr("state", "eq", "Clear") | map(attribute="entity_id") |
+          join(", ") %}
+
+
+          {% if statusesToUpdate %}
+            true
+          {% endif %}
+
+    then:
+      - service: input_select.select_option
+        data:
+          option: Neighbor motion
+        target:
+          # Can unfortunately not reuse the variable from the previous if template, so we'll duplicate it here
+          entity_id: >
+            {{ expand(neighboring_motion_statuses) | selectattr("state", "eq", "Clear") | map(attribute="entity_id") | join(", ") }}
+
+  - alias: "Wait until there is no motion from device"
+    wait_for_trigger:
+      platform: state
+      entity_id: !input main_motion_sensor
+      from: "on"
+      to: "off"
+
+  - alias: "Set this room's motion status back to clear"
+    if:
+      - condition: not
+        conditions:
+        - condition: state
+          entity_id: !input main_motion_status
+          state: Disabled
+    then:
+      service: input_select.select_option
+      data:
+        option: Clear
+      target:
+        entity_id: !input main_motion_status
+
+  - alias: "Set neighboring rooms' motion statuses, back to clear"
+    if:
+      - condition: template
+        value_template: >-
+          {% set statusesToClear = expand(neighboring_motion_statuses) |
+          selectattr("state", "eq", "Neighbor motion") | map(attribute="entity_id") |
+          join(", ") %}
+
+
+          {% if statusesToClear %}
+            true
+          {% endif %}
+
+    then:
+      - service: input_select.select_option
+        data:
+          option: Clear
+        target:
+          entity_id: >
+            {{ expand(neighboring_motion_statuses) | selectattr("state", "eq", "Neighbor motion") | map(attribute="entity_id") | join(", ") }}
+
+mode: restart
