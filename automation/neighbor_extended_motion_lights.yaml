@@ -1,0 +1,202 @@
+blueprint:
+  name: Neighbor extended motion lights
+  description: >
+    ## Neighbor extended motion lights
+
+    Temporarily do stuff based on motion here or in the next room.
+
+
+    **Requires you to set up the `Neighbor extended motion status` blueprint first!**
+
+
+    Useful when you want to save power and extend your lights lifetime, but do not want to walk into dark rooms. This blueprint gives you the impression of an always lit house. I'll admit it's cool to walk into a room that turns on the lights as you enter, but it does get old and can be impractical.
+
+
+    Hope you find the blueprint useful 😃
+
+
+    ---
+
+
+    ### Configuration:
+
+    1. Configure the `Neighbor extended motion status` blueprint
+
+    2. Create a timer helper for each room
+
+  domain: automation
+  input:
+    motion_status:
+      name: Motion status helper
+      description: Should be the same dropdown helper that you used in the `Neighbor extended motion status` blueprint.
+      selector:
+        entity:
+          domain: input_select
+
+    timer:
+      name: Timer helper
+      description: A timer which counts down until the lights should be turned off again. Create one now if you haven't already.
+      selector:
+        entity:
+          domain: timer
+
+    enabled_switch:
+      name: Endabled switch (Optional)
+      description: If populated, checks if the switch is on before running the automation. This is meant to be a a global variable across all rooms, not for this specific room, as that is set in the motion drop-down.
+      default:
+      selector:
+        entity:
+          domain: input_boolean
+
+    motion_actions:
+      name: Motion actions (Optional)
+      description: Ie. turn on the lights for a longer period of time.
+      default:
+      selector:
+        action: {}
+
+    motion_duration:
+      name: Motion duration
+      description: "For how many seconds the motion action should last. Ie. how long the lights should be on when motion was detected in the same room. Recommended value: above 5 minutes (300 seconds)."
+      default: 300
+      selector:
+        number:
+          min: 0.0
+          max: 1500
+          mode: slider
+          step: 1.0
+
+    neighbor_motion_actions:
+      name: Neighbor motion actions (Optional)
+      description: Ie. turn on the lights for a shorter period of time. If anyone enters the already lit room, the on time will be extended as configured above.
+      default:
+      selector:
+        action: {}
+
+    neighbor_motion_duration:
+      name: Neighbor motion duration
+      description: "For how many seconds the neighbor motion action should last before it's cleared. Recommended value: 15 seconds (which in reality is 15 + 10 seconds, considering that the motion sensor usually takes about 10 seconds to stop detecting)."
+      default: 15
+      selector:
+        number:
+          min: 0.0
+          max: 1500
+          mode: slider
+          step: 1.0
+
+    time_out_actions:
+      name: Time out actions
+      description: Ie. turn off the lights when the timer has run out.
+      default:
+      selector:
+        action: {}
+
+variables:
+  motion_actions: !input motion_actions
+  timer: !input timer
+  neighbor_motion_duration: !input neighbor_motion_duration
+
+trigger:
+  - platform: state
+    entity_id: !input motion_status
+    to: "Motion"
+    # Id is used to calculate how long the timer should be
+    id: "Motion"
+
+  - platform: state
+    entity_id: !input motion_status
+    to: "Neighbor motion"
+    id: "Neighbor motion"
+
+condition:
+  - condition: state
+    entity_id: !input enabled_switch
+    state: "on"
+
+action:
+  - alias: "Execute actions"
+    choose:
+      - conditions:
+          - condition: trigger
+            id: Motion
+        sequence:
+          # Trigger the motion actions
+          - choose: []
+            default: !input motion_actions
+
+          # Pause the timer, if it's already running
+          - service: timer.pause
+            data: {}
+            target:
+              entity_id: !input timer
+
+          # Then wait for the detector to stop detecting motion...
+          - wait_for_trigger:
+            - platform: state
+              entity_id: !input motion_status
+              to: Clear
+
+          # ... Before starting the timer
+          - service: timer.start
+            data:
+              duration: !input motion_duration
+            target:
+              entity_id: !input timer
+
+      - conditions:
+          - condition: trigger
+            id: Neighbor motion
+        sequence:
+          # Trigger the neighbor motion actions
+          - choose: []
+            default: !input neighbor_motion_actions
+
+          # If there is more time left on the timer than neighbor_motion_duration, then skip execution
+          - if:
+            - condition: template
+              value_template: >
+                {# As the value can be None, we set a default value to long ago #}
+                {% set finishes_at = as_timestamp(state_attr(timer, "finishes_at")|default("2023-01-01T01:01:01+00:00", true)) %}
+
+                {# Remaining is an attribute on the timer, but it isn't updated. It just returns the timer's duration #}
+                {% set remaining = finishes_at - as_timestamp(now()) %}
+
+                {{ neighbor_motion_duration > remaining }}
+            then:
+              # Pause the timer, if it's already running
+              - service: timer.pause
+                data: {}
+                target:
+                  entity_id: !input timer
+
+              # Then wait for the detector to stop detecting motion...
+              - wait_for_trigger:
+                - platform: state
+                  entity_id: !input motion_status
+                  to: Clear
+
+              # ... Before starting the timer
+              - service: timer.start
+                data:
+                  duration: !input neighbor_motion_duration
+                target:
+                  entity_id: !input timer
+
+  - alias: "Wait for the timer to run out"
+    wait_for_trigger:
+      - platform: event
+        event_type: timer.finished
+        event_data:
+          entity_id: !input timer
+
+  - alias: "Execute time out actions as long as the motion status has not become disabled"
+    if:
+      - condition: state
+        entity_id: !input enabled_switch
+        state: "on"
+    then:
+      - choose: []
+        default: !input time_out_actions
+
+
+mode: restart
