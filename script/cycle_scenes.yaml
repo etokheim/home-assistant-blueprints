@@ -166,14 +166,14 @@ sequence:
 
                 {%- else -%}
 
-                  {%- if as_timestamp(light.last_changed) < as_timestamp(area.last_turned_off.last_changed) -%}
+                  {%- if as_timestamp(light.last_changed) > as_timestamp(area.last_turned_off.last_changed) -%}
                     {%- set area.last_turned_off = light -%}
                   {%- endif -%}
 
                 {%- endif -%}
               {%- endfor -%}
 
-              {{ default_scene_after > 0 and (as_timestamp(now()) - as_timestamp(area.last_turned_off.last_changed) >= default_scene_after * 60) }}
+              {{ as_timestamp(now()) - as_timestamp(area.last_turned_off.last_changed) >= default_scene_after * 60 }}
         
         then:
         - service: scene.turn_on
