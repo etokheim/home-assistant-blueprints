@@ -1,0 +1,76 @@
+blueprint:
+  name: Return the Lights
+  description: This ritual is used to bring back the lights that most recently joined the dark side. The lights are returned to their original state. Neither darker or brighter.
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/script/return_the_lights.yaml
+  domain: script
+
+  input:    
+    area_id:
+      name: Area
+      description: The area where you want to toggle scenes
+      default: ''
+      selector:
+        area:
+    
+    transition:
+      name: Transition time
+      description: "Transition time when switching between scenes. _For 0 seconds: There is a bug with service: light.turn_on where 0s doesn't work. 0.01s does however, so you can use that as a work-around for now._"
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.1
+          unit_of_measurement: s
+
+mode: single
+
+variables:
+  area_id: !input 'area_id'
+
+sequence:
+  - service: light.turn_on
+    data:
+      transition: !input transition
+    target:
+      entity_id: >
+        {%-
+          set area = namespace(
+            lights=states.light
+              | selectattr("state", "eq", "off")
+              | selectattr('entity_id', 'in', area_entities(area_id))
+              | list,
+              
+            turned_off_last=[]
+          )
+        -%}
+
+        {#-
+          Remove any light groups from the list.
+          (If any light in a group is on, the group is on. And since we are turning on all the lights that were on, the group would also be turned on. Turning the group on, results in all the lights in it being turned on, but that's not always what we want. We just want to turn on what was actually already on).
+        -#}
+        {%- for light in area.lights -%}
+          {#- The only way to identify a group is by whether or not it has an attribute with entity_id (notice it's an attribute, not the group's entity_id) -#}
+          {%- if "entity_id" in light.attributes -%}
+            {% set area.lights = area.lights | rejectattr("entity_id", "eq", light.entity_id) %} 
+          {%- endif -%}
+        {%- endfor -%}
+
+        {% for light in area.lights -%}
+
+          {%- if area.turned_off_last | length == 0 -%}
+            {%- set area.turned_off_last = [light] -%}
+          {%- else -%}
+          
+            {#- Put all the lights that were turned off at the same time (or within 2 seconds of each other) in the same list -#}
+            {% set time_difference = (as_timestamp(area.turned_off_last[0].last_changed) - as_timestamp(light.last_changed)) %}
+            {% if time_difference <= -2 %}
+              {% set area.turned_off_last = [light] %}
+            {% elif time_difference < 2 %}
+              {% set area.turned_off_last = area.turned_off_last + [light] %}
+            {%- endif -%}
+            
+          {%- endif -%}
+        {%- endfor -%}
+
+        {{ area.turned_off_last | map(attribute='entity_id') | list }}
