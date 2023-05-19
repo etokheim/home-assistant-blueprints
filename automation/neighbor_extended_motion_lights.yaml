@@ -24,6 +24,7 @@ blueprint:
 
     2. Create a timer helper for each room
 
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/neighbor_extended_motion_lights.yaml
   domain: automation
   input:
     motion_status:
