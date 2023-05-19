@@ -27,6 +27,7 @@ blueprint:
 
     - Disabled
 
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/neighbor_extended_motion_status.yaml
   domain: automation
   input:
     main_motion_sensor:
