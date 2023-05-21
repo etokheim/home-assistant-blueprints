@@ -42,7 +42,7 @@ blueprint:
           domain: timer
 
     enabled_switch:
-      name: Endabled switch (Optional)
+      name: Enabled switch (Optional)
       description: If populated, checks if the switch is on before running the automation. This is meant to be a a global variable across all rooms, not for this specific room, as that is set in the motion drop-down.
       default:
       selector:
@@ -58,7 +58,7 @@ blueprint:
 
     motion_duration:
       name: Motion duration
-      description: "For how many seconds the motion action should last. Ie. how long the lights should be on when motion was detected in the same room. Recommended value: above 5 minutes (300 seconds)."
+      description: "How many seconds after the detector has stopped detecting motion/occupancy before the timeout actions are run. Ie. how long the lights should be on before they are turned off. Recommended value: above 5 minutes (300 seconds) for normal motion detectors."
       default: 300
       selector:
         number:
@@ -76,7 +76,7 @@ blueprint:
 
     neighbor_motion_duration:
       name: Neighbor motion duration
-      description: "For how many seconds the neighbor motion action should last before it's cleared. Recommended value: 15 seconds (which in reality is 15 + 10 seconds, considering that the motion sensor usually takes about 10 seconds to stop detecting)."
+      description: "For how many seconds after the detector has stopped detecting motion/occupancy the neighbor motion action should last before it's cleared. Recommended value: 15 seconds (which in reality is 15 + 10 seconds, considering that the motion sensor usually takes about 10 seconds to stop detecting)."
       default: 15
       selector:
         number:
