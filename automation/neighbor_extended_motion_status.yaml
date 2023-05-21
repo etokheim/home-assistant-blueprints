@@ -30,11 +30,12 @@ blueprint:
   source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/neighbor_extended_motion_status.yaml
   domain: automation
   input:
-    main_motion_sensor:
+    main_motion_sensors:
       name: Motion sensor
-      description: The main motion sensor.
+      description: The main motion sensor. (You can also select multiple sensors).
       selector:
         entity:
+          multiple: true
           domain: binary_sensor
           device_class:
           - motion
@@ -59,7 +60,7 @@ variables:
 
 trigger:
   platform: state
-  entity_id: !input main_motion_sensor
+  entity_id: !input main_motion_sensors
   from: "off"
   to: "on"
 
@@ -82,10 +83,11 @@ action:
     if:
       - condition: template
         value_template: >-
-          {% set statusesToUpdate = expand(neighboring_motion_statuses) |
-          selectattr("state", "eq", "Clear") | map(attribute="entity_id") |
-          join(", ") %}
-
+          {% set statusesToUpdate = expand(neighboring_motion_statuses)
+            | selectattr("state", "eq", "Clear")
+            | map(attribute="entity_id")
+            | join(", ")
+          %}
 
           {% if statusesToUpdate %}
             true
@@ -103,7 +105,7 @@ action:
   - alias: "Wait until there is no motion from device"
     wait_for_trigger:
       platform: state
-      entity_id: !input main_motion_sensor
+      entity_id: !input main_motion_sensors
       from: "on"
       to: "off"
 
