@@ -1,0 +1,109 @@
+blueprint:
+  name: Continuously Activate Scene
+  description: This script is continuously activates the selected scene. It is useful in combination with the Scene Extrapolation component, which changes the scene based on time of day. Continuously activating that scene can therefor create a kind of circadian rythm lighting effect.
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/continuously_activate_scene.yaml
+  author: Erling Tokheim
+  domain: automation
+
+  input:
+    area_id:
+      name: Area
+      description: The area where the `continuous scene` is located. The script gets all of this area's scenes and checks if the `continuous scene` was the last to be activated among them.
+      default: ''
+      selector:
+        area:
+
+    continuous_scene:
+      name: Continuous Scene
+      description: The scene that should be continuously activated
+      selector:
+        entity:
+          domain: scene
+          multiple: false
+    
+    transition:
+      name: Transition time
+      description: Transition time when activating the scene
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 5400
+          step: 1
+          unit_of_measurement: s
+    
+    repeat_delay:
+      name: Repeat delay
+      description: The delay before reactivating the scene
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 360
+          step: 1
+          unit_of_measurement: m
+
+mode: single
+
+variables:
+  area_id: !input 'area_id'
+  continuous_scene: !input 'continuous_scene'
+  transition: !input 'transition'
+
+trigger:
+  - platform: event
+    event_type: call_service
+    event_data:
+      domain: scene
+      service: turn_on
+      service_data:
+        entity_id:
+        - !input continuous_scene
+
+action:
+  - repeat:
+      while:
+        - condition: and
+          conditions:
+          - alias: If the last activated scene in the area is the continuous_scene
+            condition: template
+            value_template: >
+              {%- set area_scenes = states.scene | selectattr('entity_id', 'in', area_entities(area_id)) | map(attribute='entity_id') | list -%}
+              {%- set scenes_sorted_by_activation = expand(area_scenes) | sort(attribute='state', reverse = true) | map(attribute='entity_id') | list -%}
+              {%- set last_activated_scene = scenes_sorted_by_activation[0] -%}
+              {%- if last_activated_scene == continuous_scene -%}
+                {{ true }}
+              {%- else -%}
+                {{ false }}
+              {%- endif -%}
+
+          - alias: And any of the lights in the area is on
+            condition: template
+            value_template: >
+              {#- True if any of the lights in the specified area is on -#}
+              {%-
+                set lights = states.light 
+                  | selectattr('entity_id', 'in', area_entities(area_id))
+                  | selectattr("state", "eq", "on")
+                  | map(attribute='entity_id')
+                  | list
+              -%}
+              {%- if lights | length != 0 -%}
+                {{ true }}
+              {%- else -%}
+                {{ false }}
+              {%- endif -%}
+
+      sequence:
+        - alias: Wait a configurable time in seconds
+          delay:
+            hours: 0
+            minutes: !input repeat_delay
+            seconds: 0
+            milliseconds: 0
+
+        - alias: Activate the continuous_scene
+          service: scene.turn_on
+          data_template:
+            transition: !input transition
+            entity_id: !input continuous_scene
