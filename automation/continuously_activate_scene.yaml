@@ -1,7 +1,7 @@
 blueprint:
   name: Continuously Activate Scene
   description: This script is continuously activates the selected scene. It is useful in combination with the Scene Extrapolation component, which changes the scene based on time of day. Continuously activating that scene can therefor create a kind of circadian rythm lighting effect.
-  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/continuously_activate_scene.yaml
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/script/continuously_activate_scene.yaml
   author: Erling Tokheim
   domain: automation
 
@@ -23,27 +23,27 @@ blueprint:
     
     transition:
       name: Transition time
-      description: Transition time when activating the scene
-      default: 1
+      description: Transition time when activating the scene (1800 seconds = 30 minutes)
+      default: 300
       selector:
         number:
           min: 0
-          max: 5400
+          max: 3600
           step: 1
           unit_of_measurement: s
     
     repeat_delay:
       name: Repeat delay
       description: The delay before reactivating the scene
-      default: 30
+      default: 5
       selector:
         number:
           min: 1
-          max: 360
+          max: 60
           step: 1
           unit_of_measurement: m
 
-mode: single
+mode: restart
 
 variables:
   area_id: !input 'area_id'
@@ -61,6 +61,13 @@ trigger:
         - !input continuous_scene
 
 action:
+  - alias: Start by waiting the configured amount of time (as the scene was just activated)
+    delay:
+      hours: 0
+      minutes: !input repeat_delay
+      seconds: 0
+      milliseconds: 0
+
   - repeat:
       while:
         - condition: and
@@ -95,15 +102,15 @@ action:
               {%- endif -%}
 
       sequence:
+        - alias: Activate the continuous_scene
+          service: scene.turn_on
+          data_template:
+            transition: !input transition
+            entity_id: !input continuous_scene
+
         - alias: Wait a configurable time in seconds
           delay:
             hours: 0
             minutes: !input repeat_delay
             seconds: 0
             milliseconds: 0
-
-        - alias: Activate the continuous_scene
-          service: scene.turn_on
-          data_template:
-            transition: !input transition
-            entity_id: !input continuous_scene
