@@ -31,8 +31,8 @@ blueprint:
           multiple: true
     
     default_scene:
-      name: Default Scene
-      description: Scene that is turned on if the lights has been off for longer than the specified time
+      name: Default Scenee
+      description: The scene that is turned on if the lights has been off for longer than the specified time. **If this was the last activated scene before turning off the lights, they will be powered on to this scene - regardless of the `Power on to last used scene` setting.**
       selector:
         entity:
           domain: scene
@@ -73,6 +73,13 @@ blueprint:
       default: false
       selector:
         boolean:
+      
+    power_on_to_default_scene_if_last_activated:
+      name: "Power on to the default scene, if that was the last activated?"
+      description: "This is a special setting meant to be used in combination with my custom integration: `Scene Extrapolation`. It's kind of the same as `Power on to last used scene`, but only if the `Default scene` was the last activated scene. In practise, this means that any 'overrides' to the `Default scene` will not be restored when turning the lights on again."
+      default: true
+      selector:
+        boolean:
 
 mode: queued
 
@@ -83,56 +90,65 @@ variables:
   default_scene: !input 'default_scene'
   default_scene_after: !input 'default_scene_after'
   use_static_order: !input use_static_order
-  last_triggered: "{{ as_timestamp(iif(state_attr(this.entity_id,'last_triggered') == none, now(), state_attr(this.entity_id,'last_triggered'))) }}"
   power_on_to_last_used_scene: !input power_on_to_last_used_scene
 
 sequence:
+  - variables:
+      # We use a separate variable section here, instead of the one above to define our variables because it's not possible
+      # to reference other variables created in the same section in the variable definition section above. In an variable
+      # action slot, as we have here, that works fine however. (Example. "var1: 1, var2: var1 + 1")
+      area_scenes: "{{ states.scene | selectattr('entity_id', 'in', area_entities(area_id)) | map(attribute='entity_id') | list }}"
+      scenes_to_handle: "{{ (area_scenes | reject('in', excluded_scenes) | list) + included_scenes }}"
+      scenes_sorted_by_activation_time: "{{ expand(scenes_to_handle) | sort(attribute='state', reverse = true) | map(attribute='entity_id') | list }}"
+
+      # Version of `scenes_sorted_by_activation_time` with a forcefully included `default_scene`
+      scenes_with_default_scene_sorted_by_activation_time: >
+        {% set scenes_to_handle_with_default_scene = scenes_to_handle + [ default_scene ] %}
+        {{ expand(scenes_to_handle_with_default_scene) | sort(attribute='state', reverse = true) | map(attribute='entity_id') | list }}
+
+      last_activated_scene: "{{ scenes_sorted_by_activation_time[0] }}"
+      index_of_last_activated_scene: "{{ scenes_to_handle.index(last_activated_scene) }}"
+      last_activated_scene_with_default_scene: "{{ scenes_with_default_scene_sorted_by_activation_time[0] }}"
+
+      # True if any of the lights in the specified area is on
+      lights_on: >
+        {%-
+          set lights = states.light 
+            | selectattr('entity_id', 'in', area_entities(area_id))
+            | selectattr("state", "eq", "on")
+            | map(attribute='entity_id')
+            | list
+        -%}
+        {{ lights | length != 0 }}
+
   - if:
       - condition: template
-        value_template: >
-          {#- True if any of the lights in the specified area is on -#}
-          {%-
-            set lights = states.light 
-              | selectattr('entity_id', 'in', area_entities(area_id))
-              | selectattr("state", "eq", "on")
-              | map(attribute='entity_id')
-              | list
-          -%}
-          {%- if lights | length != 0 -%}
-            {{ true }}
-          {%- else -%}
-            {{ false }}
-          {%- endif -%}
+        value_template: "{{ lights_on }}"
     
     then:
-      - service: scene.turn_on
+      - alias: Cycle to the next scene (turns on the next scene in the order)
+        service: scene.turn_on
         data_template:
           transition: !input transition
-          entity_id: >
-            {% set area_scenes = states.scene | selectattr('entity_id', 'in', area_entities(area_id)) | map(attribute='entity_id') | list %}
-            {% set all_scenes = (area_scenes | reject('in', excluded_scenes) | list) + included_scenes %}
-            
+          entity_id: >            
             {% if use_static_order == true %}
 
-              {% set scenes_sorted_by_activation = expand(all_scenes) | sort(attribute='state', reverse = true) | map(attribute='entity_id') | list %}
-              {% set last_activated_scene = scenes_sorted_by_activation[0] %}
-              {% set index_of_last_activated_scene = all_scenes.index(last_activated_scene) %}
-              {% set new_index = index_of_last_activated_scene + 1 %}
+              {% set index_of_next_scene = index_of_last_activated_scene + 1 %}
 
-              {% if new_index == all_scenes | count %}
-                {{ all_scenes[0] }}
+              {% if index_of_next_scene == scenes_to_handle | count %}
+                {{ scenes_to_handle[0] }}
               {% else %}
-                {{ all_scenes[new_index] }}
+                {{ scenes_to_handle[index_of_next_scene] }}
               {% endif %}
 
             {% else %}
 
-              {% set unknown_scenes = expand(all_scenes) | selectattr('state', 'eq', 'unknown') | map(attribute='entity_id') | list %}
+              {% set unknown_scenes = expand(scenes_to_handle) | selectattr('state', 'eq', 'unknown') | map(attribute='entity_id') | list %}
               
               {% if unknown_scenes | count > 0 %}
                 {{ unknown_scenes[0] }}
               {% else %}
-                {% set known_scenes = expand(all_scenes) | sort(attribute='state', reverse = false) | map(attribute='entity_id') | list %}
+                {% set known_scenes = expand(scenes_to_handle) | sort(attribute='state', reverse = false) | map(attribute='entity_id') | list %}
                 {{ known_scenes[0] }}
               {% endif %}
 
@@ -140,11 +156,10 @@ sequence:
 
     else:
       - if:
-          - condition: template
+          - alias: If the lights are off, and have been for longer than `default_scene_after`
+            condition: template
             value_template: >
               {#
-                The lights are off, but have they been off for over x-time
-
                 First we'll find the area's turned off lights
                 Then we'll loop over the lights to figure out which of them was turned off last
                 Lastly we return true/false depending on whether the lights has been off for longer than the default_scene_after time
@@ -176,72 +191,81 @@ sequence:
               {{ as_timestamp(now()) - as_timestamp(area.last_turned_off.last_changed) >= default_scene_after * 60 }}
         
         then:
-        - service: scene.turn_on
+        - alias: Then activate the default scene
+          service: scene.turn_on
           data_template:
             transition: !input transition
             entity_id: !input default_scene
 
         else:
-          - choose:
-            - conditions: '{{ power_on_to_last_used_scene == true }}'
-              sequence:
-              - service: scene.turn_on
+        - choose:
+          - alias: Else, if the power_on_to_last_used_scene is true, activate the last used scene
+            conditions: '{{ power_on_to_last_used_scene == true }}'
+            sequence:
+            - service: scene.turn_on
+              data_template:
+                transition: !input transition
+                entity_id: "{{ last_activated_scene }}"
+          
+          - alias: Else, we turn the lights on as they were before they were turned off
+            conditions: []
+            sequence:
+            - if:
+              - alias: If the last activated scene before the lights turned off was the `default_scene` and `power_on_to_default_scene_if_last_activated` is true
+                condition: template
+                value_template: "{{ last_activated_scene_with_default_scene == default_scene and power_on_to_default_scene_if_last_activated }}"
+
+              then:
+              - alias: Then activate the default scene
+                service: scene.turn_on
                 data_template:
                   transition: !input transition
+                  entity_id: !input default_scene
+
+              else:
+              - alias: Else, we turn the lights on as they were before they were turned off
+                service: light.turn_on
+                data:
+                  transition: !input transition
+                target:
                   entity_id: >
-                    {% set area_scenes = states.scene | selectattr('entity_id', 'in', area_entities(area_id)) | map(attribute='entity_id') | list %}
-                    {% set all_scenes = (area_scenes | reject('in', excluded_scenes) | list) + included_scenes %}
-                    {% set scenes_sorted_by_activation = expand(all_scenes) | sort(attribute='state', reverse = true) | map(attribute='entity_id') | list %}
-                    {% set last_activated_scene = scenes_sorted_by_activation[0] %}
-                    {{ last_activated_scene }}
-
-            - conditions: []
-              sequence:
-                - service: light.turn_on
-                  data:
-                    transition: !input transition
-                  target:
-                    entity_id: >
-                      {%-
-                        set area = namespace(
-                          lights=states.light
-                            | selectattr("state", "eq", "off")
-                            | selectattr('entity_id', 'in', area_entities(area_id))
-                            | list,
-                            
-                          turned_off_last=[]
-                        )
-                      -%}
-
-                      {#-
-                        Remove any light groups from the list.
-                        (If any light in a group is on, the group is on. And since we are turning on all the lights that were on, the group would also be turned on. Turning the group on, results in all the lights in it being turned on, but that's not always what we want. We just want to turn on what was actually already on).
-                      -#}
-                      {%- for light in area.lights -%}
-                        {#- The only way to identify a group is by whether or not it has an attribute with entity_id (notice it's an attribute, not the group's entity_id) -#}
-                        {%- if "entity_id" in light.attributes -%}
-                          {% set area.lights = area.lights | rejectattr("entity_id", "eq", light.entity_id) %} 
-                        {%- endif -%}
-                      {%- endfor -%}
-
-                      {% for light in area.lights -%}
-
-                        {%- if area.turned_off_last | length == 0 -%}
-                          {%- set area.turned_off_last = [light] -%}
-                        {%- else -%}
-                        
-                          {#- Put all the lights that were turned off at the same time (or within 2 seconds of each other) in the same list -#}
-                          {% set time_difference = (as_timestamp(area.turned_off_last[0].last_changed) - as_timestamp(light.last_changed)) %}
-                          {% if time_difference <= -2 %}
-                            {% set area.turned_off_last = [light] %}
-                          {% elif time_difference <= 0 %}
-                          {% elif time_difference < 2 %}
-                            {% set area.turned_off_last = area.turned_off_last + [light] %}
-                          {%- endif -%}
+                    {%-
+                      set area = namespace(
+                        lights=states.light
+                          | selectattr("state", "eq", "off")
+                          | selectattr('entity_id', 'in', area_entities(area_id))
+                          | list,
                           
+                        turned_off_last=[]
+                      )
+                    -%}
+
+                    {#-
+                      Remove any light groups from the list.
+                      (If any light in a group is on, the group is on. And since we are turning on all the lights that were on, the group would also be turned on. Turning the group on, results in all the lights in it being turned on, but that's not always what we want. We just want to turn on what was actually already on).
+                    -#}
+                    {%- for light in area.lights -%}
+                      {#- The only way to identify a group is by whether or not it has an attribute with entity_id (notice it's an attribute, not the group's entity_id) -#}
+                      {%- if "entity_id" in light.attributes -%}
+                        {% set area.lights = area.lights | rejectattr("entity_id", "eq", light.entity_id) %} 
+                      {%- endif -%}
+                    {%- endfor -%}
+
+                    {% for light in area.lights -%}
+
+                      {%- if area.turned_off_last | length == 0 -%}
+                        {%- set area.turned_off_last = [light] -%}
+                      {%- else -%}
+                      
+                        {#- Put all the lights that were turned off at the same time (or within 2 seconds of each other) in the same list -#}
+                        {% set time_difference = (as_timestamp(area.turned_off_last[0].last_changed) - as_timestamp(light.last_changed)) %}
+                        {% if time_difference <= -2 %}
+                          {% set area.turned_off_last = [light] %}
+                        {% elif time_difference < 2 %}
+                          {% set area.turned_off_last = area.turned_off_last + [light] %}
                         {%- endif -%}
-                      {%- endfor -%}
+                        
+                      {%- endif -%}
+                    {%- endfor -%}
 
-                      {{ area.turned_off_last | map(attribute='entity_id') | list }}
-
-
+                    {{ area.turned_off_last | map(attribute='entity_id') | list }}
