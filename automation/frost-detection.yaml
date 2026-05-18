@@ -1,0 +1,129 @@
+blueprint:
+  name: Frost Detection
+  description: >
+    Do things when the temperature goes lower than a set amount in the house
+
+    ---
+
+    Readme: The script mode is restart
+
+    ---
+
+    TODO:
+    3. Add an exclude area field
+    4. Do the same for the fire-detection blueprint
+  domain: automation
+  input:
+    temperature_threshold:
+      name: Temperature threshold
+      description: How cold it can get before you are warned
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 25
+          mode: slider
+          step: 1.0
+
+    frost_risk_actions:
+      name: Frost Risk Actions (Optional)
+      description: Any action you want to take when the temperature drops below the threshold
+      default:
+      selector:
+        action: {}
+
+    frost_cleared_actions:
+      name: Frost Risk Cleared Actions (Optional)
+      description: Any actions to run when the temperature alert is cleared (above the theshold again).
+      default:
+      selector:
+        action: {}
+
+    ignored_areas:
+      name: Ignored Areas
+      description: Add areas in which all temperature sensors are ignored
+      default: []
+      selector:
+        area:
+          multiple: true
+
+    ignored_temperature_devices:
+      name: Ignored Temperature Devices
+      description: Select devices with temperature sensors that should be ignored.
+      default: []
+      selector:
+        device:
+          multiple: true
+          entity:
+            domain: sensor
+            device_class: temperature
+
+    ignored_temperature_sensors:
+      name: Ignored Temperature Sensors
+      description: Select any temperature sensor you want to ignore. Ie. outdoor sensors
+      default: []
+      selector:
+        entity:
+          multiple: true
+          device_class:
+            - temperature
+
+trigger_variables:
+  temperature_threshold: !input temperature_threshold
+  ignored_temperature_devices: !input ignored_temperature_devices
+  ignored_temperature_sensors: !input ignored_temperature_sensors
+  ignored_areas: !input ignored_areas
+
+variables:
+  temperature_threshold: !input temperature_threshold
+
+trigger:
+  - platform: template
+    value_template: >
+      {%- set ns = namespace(entities=[]) %}
+      {%- for area_id in ignored_areas %}
+        {% set ns.entities = ns.entities + expand(area_entities(area_id))
+          | selectattr('attributes.device_class', '==', 'temperature')
+          | map(attribute='entity_id')
+          | list %}
+      {% endfor %}
+
+      {% set area_ignored_temperature_sensors = ns.entities %}
+
+      {#
+        Apparently device_id isn't available on the entities and can only be fetced by the
+        'device_id()' function. Ie. this doesnt work:
+        | reject('in', ignored_temperature_devices | default([]), attribute='device_id')
+
+        We therefor reject device_ids in a separate loop after
+      #}
+      {% set temperature_sensors = expand(states.sensor)
+        | selectattr('attributes.device_class', '==', 'temperature')
+        | rejectattr('entity_id', 'in', ignored_temperature_sensors | default([]))
+        | rejectattr('entity_id', 'in', area_ignored_temperature_sensors | default([]))
+        | selectattr('state', 'is_number')
+        | list %}
+
+
+      {# Filter loop: skip ignored device IDs, then apply temperature threshold #}
+      {% set filtered = namespace(sensors=[]) %}
+      {% for sensor in temperature_sensors %}
+        {% set this_device_id = device_id(sensor.entity_id) %}
+        {% if this_device_id not in ignored_temperature_devices and (sensor.state | float) < temperature_threshold %}
+          {% set filtered.sensors = filtered.sensors + [sensor] %}
+        {% endif %}
+      {% endfor %}
+
+      {{ filtered.sensors | count > 0 }}
+
+action:
+  - choose: []
+    default: !input frost_risk_actions
+
+  - wait_template: "{{ states(trigger.entity_id) | float > temperature_threshold +1 }}" # +1 to avoid jitter
+    continue_on_timeout: false
+
+  - choose: []
+    default: !input frost_cleared_actions
+
+mode: parallel
