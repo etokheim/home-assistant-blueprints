@@ -1,0 +1,381 @@
+blueprint:
+  name: Floor Heating Regulator
+  description: >
+    ## 🌡️ Floor Heating Regulator
+
+    Perfect for floor heating systems with regulator-only functionality (no built-in temperature sensor)! 🔥
+
+
+    This automation continuously monitors and adjusts your regulator set point using predictive algorithms. It runs every 5 minutes and intelligently calculates the optimal value based on temperature trends, ensuring you reach your target temperature efficiently without overshooting.
+
+
+    **Key Features:**
+
+    - 🎯 Predictive control: Calculates optimal set point based on temperature trends and time-to-target
+    
+    - ⚡ Smart rounding: Set points are automatically rounded to steps of 5 (integers only - for compability's sake)
+    
+    - 🛡️ Safety first: Automatically turns off regulator if temperature readings become outdated
+    
+    - 📊 Intelligent ramping: Smoothly adjusts power to prevent overshooting while maintaining target
+
+
+    **Setup Required:**
+
+    - Create a `Generic Thermostat` helper (provides climate entity with current & target temperature)
+    
+    - Create a `Statistics Sensor` helper (tracks hourly average temperature for trend analysis)
+
+  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/floor_heating_regulator_automation.yaml
+  domain: automation
+
+  input:
+    climate_entity:
+      name: Climate Entity
+      description: The climate entity that contains both the current_temperature and target temperature attributes
+      selector:
+        entity:
+          domain: climate
+
+    regulator_set_point:
+      name: Regulator Set Point
+      description: The number entity that controls the regulator value. (Entity provided by the thermostat).
+      selector:
+        entity:
+          domain: number
+
+    statistics_sensor:
+      name: Statistics Sensor (Average Temperature)
+      description: A statistics sensor that provides the average temperature over the last hour. Used to calculate temperature change rate and predict time to reach target.
+      selector:
+        entity:
+          domain: sensor
+
+    max_regulator_value:
+      name: Maximum Regulator Value
+      description: The maximum value the regulator can be set to
+      default: 70
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 5
+
+    optional_section:
+      name: Optional
+      icon: mdi:cog-outline
+      collapsed: true
+      input:
+        # check_interval_minutes:
+        #   name: Check Interval (minutes)
+        #   description: How often to check and adjust the regulator (in minutes)
+        #   default: 5
+        #   selector:
+        #     number:
+        #       min: 1
+        #       max: 60
+        #       step: 1
+        #       unit_of_measurement: minutes
+
+        outdated_threshold_hours:
+          name: Outdated Threshold (hours)
+          description: How many hours before a temperature reading is considered outdated
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 24
+              step: 1
+              unit_of_measurement: hours
+
+        outdated_temperature_actions:
+          name: Outdated Temperature Actions (Optional)
+          description: Actions to execute when the temperature reading is outdated (e.g., send notifications, log events, etc.). Leave empty if no actions are needed.
+          default:
+          selector:
+            action: {}
+
+triggers:
+  - entity_id: !input climate_entity
+    trigger: state
+  - minutes: /5 # Doesnt work: !input check_interval_minutes
+    trigger: time_pattern
+actions:
+  - variables:
+      # Input values
+      max_regulator_value: !input max_regulator_value
+      regulator_set_point_entity: !input regulator_set_point
+      climate_entity_id: !input climate_entity
+      statistics_sensor_entity: !input statistics_sensor
+      outdated_threshold_hours: !input outdated_threshold_hours
+
+      # Get raw state values (without defaults - we'll validate them)
+      regulator_value_raw: "{{ states[regulator_set_point_entity].state }}"
+      target_temperature_raw: "{{ states[climate_entity_id].attributes.temperature }}"
+      temperature_raw: "{{ states[climate_entity_id].attributes.current_temperature }}"
+      average_temperature_raw: "{{ states[statistics_sensor_entity].state }}"
+
+      # Validate that all required values are present and valid
+      # Check if any value is None, "unknown", "unavailable", or empty
+      validation_error: >-
+        {%- set reg_state = regulator_value_raw %}
+        {%- set target_temp = target_temperature_raw %}
+        {%- set curr_temp = temperature_raw %}
+        {%- set avg_temp = average_temperature_raw %}
+        {%- set errors = [] %}
+        {%- if reg_state is none or reg_state == "unknown" or reg_state == "unavailable" or reg_state == "" %}
+          {%- set _ = errors.append("Regulator set point is invalid: " ~ reg_state) %}
+        {%- endif %}
+        {%- if target_temp is none or target_temp == "unknown" or target_temp == "unavailable" or target_temp == "" %}
+          {%- set _ = errors.append("Target temperature is invalid: " ~ target_temp) %}
+        {%- endif %}
+        {%- if curr_temp is none or curr_temp == "unknown" or curr_temp == "unavailable" or curr_temp == "" %}
+          {%- set _ = errors.append("Current temperature is invalid: " ~ curr_temp) %}
+        {%- endif %}
+        {%- if avg_temp is none or avg_temp == "unknown" or avg_temp == "unavailable" or avg_temp == "" %}
+          {%- set _ = errors.append("Average temperature is invalid: " ~ avg_temp) %}
+        {%- endif %}
+        {%- if errors | length > 0 %}
+          {{ errors | join("; ") }}
+        {%- else %}
+          {{ "" }}
+        {%- endif %}
+
+      # Convert to float values only if validation passed, otherwise leave as None
+      regulator_value: >-
+        {%- if validation_error == "" %}
+          {{ regulator_value_raw | float }}
+        {%- else %}
+          {{ none }}
+        {%- endif %}
+      target_temperature: >-
+        {%- if validation_error == "" %}
+          {{ target_temperature_raw | float }}
+        {%- else %}
+          {{ none }}
+        {%- endif %}
+      temperature: >-
+        {%- if validation_error == "" %}
+          {{ temperature_raw | float }}
+        {%- else %}
+          {{ none }}
+        {%- endif %}
+      average_temperature: >-
+        {%- if validation_error == "" %}
+          {{ average_temperature_raw | float }}
+        {%- else %}
+          {{ none }}
+        {%- endif %}
+
+      # Check if temperature reading is outdated
+      seconds_since_last_temperature_update: >-
+        {{ as_timestamp(now()) - as_timestamp(states[climate_entity_id].last_updated) }}
+      outdated_threshold_seconds: "{{ outdated_threshold_hours * 60 * 60 }}"
+      # Check if temperature reading is outdated (only if validation passed, otherwise assume not outdated for error message)
+      temperature_outdated: >-
+        {%- if validation_error == "" %}
+          {{ seconds_since_last_temperature_update >= outdated_threshold_seconds }}
+        {%- else %}
+          {{ false }}
+        {%- endif %}
+
+      # Combined error message - includes both validation errors and outdated temperature info
+      combined_error_message: >-
+        {%- set errors = [] %}
+        {%- if validation_error != "" %}
+          {%- set _ = errors.append("Validation errors: " ~ validation_error) %}
+        {%- endif %}
+        {%- if temperature_outdated %}
+          {%- set hours_outdated = seconds_since_last_temperature_update / 3600 %}
+          {%- set _ = errors.append("Temperature reading is outdated (last updated " ~ hours_outdated | round(2) ~ " hours ago, threshold is " ~ outdated_threshold_hours ~ " hours)") %}
+        {%- endif %}
+        {%- if errors | length > 0 %}
+          {{ errors | join("; ") }}
+        {%- else %}
+          {{ "" }}
+        {%- endif %}
+
+      # Combined error condition - true if either validation failed or temperature is outdated
+      has_error: "{{ validation_error != '' or temperature_outdated }}"
+      # Calculate temperature change rate (degrees per hour)
+      # Rate is positive if temperature is rising, negative if falling
+      # Only calculate if validation passed
+      temperature_change_rate: >-
+        {%- if validation_error == "" and temperature is not none and average_temperature is not none %}
+          {%- set temp_diff = temperature - average_temperature %}
+          {{ temp_diff }}
+        {%- else %}
+          {{ 0 }}
+        {%- endif %}
+
+      # Calculate time to reach target temperature (in hours)
+      # Positive if we need to heat up, negative if we're cooling down past target
+      time_to_target_hours: >-
+        {%- set temp_delta = target_temperature - temperature %}
+        {%- if temperature_change_rate | abs > 0.01 %}
+          {# Rate is significant, calculate time to target #}
+          {{ temp_delta / temperature_change_rate }}
+        {%- else %}
+          {# Rate is too small or zero, assume very long time #}
+          {{ 999 }}
+        {%- endif %}
+
+      # Determine if temperature is currently rising
+      temperature_rising: "{{ temperature_change_rate > 0.01 }}"
+
+      # Determine if temperature is currently falling
+      temperature_falling: "{{ temperature_change_rate < -0.01 }}"
+
+      # Determine if we are above target temperature
+      above_target: "{{ temperature > target_temperature }}"
+
+      # Determine if we are below target temperature
+      below_target: "{{ temperature < target_temperature }}"
+
+      # Calculate the optimal regulator set point based on temperature and trend
+      # This directly calculates the best set point value rather than adjusting incrementally
+      # If validation failed or temperature is outdated, return 0 to turn off regulator
+      regulator_final_value: >-
+        {%- if validation_error != "" or temperature is none or target_temperature is none or average_temperature is none or temperature_outdated %}
+          {# Validation failed, values are invalid, or temperature is outdated - turn off regulator #}
+          {{ 0 }}
+        {%- else %}
+          {%- set time_to_target = time_to_target_hours | float %}
+          {%- set max_value = max_regulator_value | float %}
+          {%- set temp_delta = target_temperature - temperature %}
+          {%- set temp_delta_abs = temp_delta | abs %}
+          {%- set rate_abs = temperature_change_rate | abs %}
+
+        {# Case 1: Far off target (takes more than 1 hour to reach) - use max value #}
+        {%- if time_to_target > 1.0 and temp_delta > 0 %}
+          {{ ((max_value / 5) | round(0)) * 5 | int }}
+
+        {# Case 2: Closing in on target (less than 1 hour) and temperature is rising - reduce proportionally #}
+        {%- elif time_to_target > 0 and time_to_target <= 1.0 and temperature_rising %}
+          {# Calculate set point based on how close we are to target #}
+          {# Closer to target = lower set point to prevent overshooting #}
+          {# Scale from max_value down to a minimum based on time remaining #}
+          {%- set proximity_factor = time_to_target %}
+          {# Use 20% of max as minimum when very close, scale up as time increases #}
+          {%- set min_close_value = max_value * 0.2 %}
+          {%- set calculated_value = min_close_value + (max_value - min_close_value) * proximity_factor %}
+          {%- if calculated_value < 0 %}
+            {{ 0 }}
+          {%- elif calculated_value > max_value %}
+            {{ ((max_value / 5) | round(0)) * 5 | int }}
+          {%- else %}
+            {{ ((calculated_value / 5) | round(0)) * 5 | int }}
+          {%- endif %}
+
+        {# Case 3: Above target but cooling and will go below target in less than 1 hour - increase to maintain #}
+        {%- elif above_target and temperature_falling %}
+          {# Check if we'll cross below target within an hour #}
+          {%- set temp_above_target = temperature - target_temperature %}
+          {%- set hours_to_cross_below = temp_above_target / rate_abs %}
+          {%- if hours_to_cross_below > 0 and hours_to_cross_below < 1.0 %}
+            {# Will go below target within an hour - calculate set point to maintain temperature #}
+            {# Use a value proportional to how quickly we're cooling and how far above target we are #}
+            {# More cooling rate and closer to target = higher set point needed #}
+            {%- set urgency_factor = 1.0 - hours_to_cross_below %}
+            {%- set temp_above_factor = (temp_above_target / 2.0) | abs %}
+            {%- if temp_above_factor > 1.0 %}
+              {%- set temp_above_factor = 1.0 %}
+            {%- endif %}
+            {%- set calculated_value = max_value * 0.4 + (max_value * 0.6) * (urgency_factor * 0.7 + temp_above_factor * 0.3) %}
+            {%- if calculated_value > max_value %}
+              {{ ((max_value / 5) | round(0)) * 5 | int }}
+            {%- else %}
+              {{ ((calculated_value / 5) | round(0)) * 5 | int }}
+            {%- endif %}
+          {%- else %}
+            {# Won't cross below target soon - set to low value to allow cooling #}
+            {{ ((max_value * 0.1 / 5) | round(0)) * 5 | int }}
+          {%- endif %}
+
+        {# Case 4: Below target and not rising fast enough, or other scenarios #}
+        {%- elif temp_delta > 0 %}
+          {# Need to heat up - calculate set point based on temperature difference and current rate #}
+          {%- if rate_abs < 0.1 %}
+            {# Temperature is stable or changing very slowly - use high value to start heating #}
+            {%- if temp_delta_abs > 2 %}
+              {{ ((max_value / 5) | round(0)) * 5 | int }}
+            {%- else %}
+              {{ ((max_value * 0.7 / 5) | round(0)) * 5 | int }}
+            {%- endif %}
+          {%- else %}
+            {# Temperature is changing - calculate based on how much we need to change #}
+            {# Larger temp delta = higher set point, but also consider current rate #}
+            {%- set temp_factor = (temp_delta_abs / 5.0) %}
+            {%- if temp_factor > 1.0 %}
+              {%- set temp_factor = 1.0 %}
+            {%- endif %}
+            {# If rate is in wrong direction or too slow, need more power #}
+            {%- set rate_factor = 1.0 %}
+            {%- if not temperature_rising or (temperature_rising and rate_abs < 0.5) %}
+              {%- set rate_factor = 1.2 %}
+            {%- endif %}
+            {%- set calculated_value = max_value * temp_factor * rate_factor %}
+            {%- if calculated_value > max_value %}
+              {{ ((max_value / 5) | round(0)) * 5 | int }}
+            {%- elif calculated_value < (max_value * 0.3) %}
+              {{ ((max_value * 0.3 / 5) | round(0)) * 5 | int }}
+            {%- else %}
+              {{ ((calculated_value / 5) | round(0)) * 5 | int }}
+            {%- endif %}
+          {%- endif %}
+
+        {# Case 5: At or above target and stable/rising - reduce to maintain or allow slight cooling #}
+        {%- else %}
+          {# At target or above - use low value to maintain or allow slight cooling #}
+          {%- if temp_delta_abs < 0.5 %}
+            {# Very close to target - use minimal value #}
+            {{ ((max_value * 0.15 / 5) | round(0)) * 5 | int }}
+          {%- elif above_target %}
+            {# Above target - use low value to allow cooling #}
+            {%- set excess_factor = (temp_delta_abs / 2.0) %}
+            {%- if excess_factor > 1.0 %}
+              {%- set excess_factor = 1.0 %}
+            {%- endif %}
+            {{ (((max_value * 0.1) * (1.0 - excess_factor * 0.5) / 5) | round(0)) * 5 | int }}
+          {%- else %}
+            {# Slightly below or at target - use moderate value to maintain #}
+            {{ ((max_value * 0.25 / 5) | round(0)) * 5 | int }}
+          {%- endif %}
+        {%- endif %}
+        {%- endif %}
+    enabled: true
+  # Check if there are any errors (validation failed or temperature outdated)
+  # If either fails, turn off regulator, log error, and run user actions
+  - if:
+      - condition: template
+        value_template: "{{ has_error }}"
+    then:
+      # Error condition - validation failed or temperature outdated
+      # Turn off regulator, log error, and execute user-provided actions
+      - event: logbook_entry
+        event_data:
+          name: Floor Heating Regulator
+          message: >-
+            Error: {{ combined_error_message }}.
+            Turning off regulator set point for safety.
+          entity_id: !input regulator_set_point
+      - action: number.set_value
+        metadata: {}
+        data:
+          value: "0"
+        target:
+          entity_id: !input regulator_set_point
+        enabled: true
+      - choose: []
+        default: !input outdated_temperature_actions
+    else:
+      # No errors - validation passed and temperature is fresh
+      # Set calculated regulator value
+      - action: number.set_value
+        metadata: {}
+        data:
+          value: "{{ regulator_final_value }}"
+        target:
+          entity_id: !input regulator_set_point
+        enabled: true
+mode: single
