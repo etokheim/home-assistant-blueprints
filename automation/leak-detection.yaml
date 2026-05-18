@@ -1,0 +1,95 @@
+blueprint:
+  name: Leak Detection
+  description: >
+    Do things when a leak is detected
+
+    ---
+
+    Readme: The script mode is parallel
+
+    ---
+
+    TODO:
+    1. Automatically get all temperature sensors
+    2. Add an exclude field (to exclude specific sensors - ie outdoor)
+    3. Add an exclude area field
+    4. Do the same for the fire-detection blueprint
+  domain: automation
+  input:
+    ignored_leak_sensors:
+      name: Ignored Leak Sensors
+      description: Add sensors to ignore
+      default: []
+      selector:
+        entity:
+          multiple: true
+          device_class:
+            - moisture
+
+    leak_actions:
+      name: Leak Actions (Optional)
+      description: Ie. use a repeat action with notify or text to speech until the detector stops detecting. (Example available with the blueprint).
+      default:
+      selector:
+        action: {}
+
+    leak_cleared_actions:
+      name: Leak Cleared Actions (Optional)
+      description: Any actions to run when the leak alert is cleared ("leaking" isn't detected anymore).
+      default:
+      selector:
+        action: {}
+       
+variables:
+  ignored_leak_sensors: !input ignored_leak_sensors
+
+trigger_variables:
+  ignored_leak_sensors: !input ignored_leak_sensors
+
+trigger:
+  - platform: template
+    value_template: >
+      {{ states.binary_sensor 
+          | selectattr('attributes.device_class', '==', 'moisture') 
+          | rejectattr('state', 'not', 'on') 
+          | map(attribute='entity_id')
+          | reject('in', ignored_leak_sensors) 
+          | list
+          | count > 0 }}
+
+action:
+  - variables:
+      this_area_id: "{{ area_id(trigger.entity_id) }}"
+      this_area_name: "{{ area_name(trigger.entity_id) }}"
+      device_class: "{{ state_attr(trigger.entity_id, 'device_class') }}"
+  
+  - if:
+      - alias: Doublecheck if the triggered entity is a leak sensor (have had issues when restarting z2m with random binary sensors reporting as a leaking)
+        condition: or
+        conditions:
+          - alias: Check if the trigger was by a moisture sensor
+            condition: template
+            value_template: "{{ device_class == 'moisture' }}"
+          
+          - alias: The Aqara leak sensor reports the tamper sensor, with a water leak attribute for some reason
+            condition: template
+            value_template: >
+              {{
+                device_class == 'tamper' and
+                trigger.from_state.attributes.water_leak == false and
+                trigger.to_state.attributes.water_leak == true
+              }}
+
+    then:
+      - alias: Then run actions
+        choose: []
+        default: !input leak_actions
+
+      - wait_template: "{{ states(trigger.entity_id) == 'off' }}"
+        continue_on_timeout: false
+
+      - choose: []
+        default: !input leak_cleared_actions
+
+
+mode: parallel
