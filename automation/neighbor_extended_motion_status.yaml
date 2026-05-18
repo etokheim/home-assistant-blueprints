@@ -32,7 +32,8 @@ blueprint:
   input:
     main_motion_sensors:
       name: Motion sensor
-      description: The main motion sensor. (You can also select multiple sensors).
+      description: Select all of the motion sensors in the room.
+      default:
       selector:
         entity:
           multiple: true
@@ -40,6 +41,11 @@ blueprint:
           device_class:
           - motion
           - occupancy
+          - door
+          - garage_door
+          - opening
+          - tamper
+          - window
     main_motion_status:
       name: Motion status helper
       description: Should be a dropdown helper. See configuration in the introduction.
@@ -47,8 +53,9 @@ blueprint:
         entity:
           domain: input_select
     neighboring_motion_statuses:
-      name: Neighboring rooms motion status
+      name: Neighboring rooms motion status (Optional)
       description: The neighboring room's motion status dropdown helpers. Configured the same way as the main one. **You can select multiple entities.**
+      default:
       selector:
         entity:
           domain: input_select
