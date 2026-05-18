@@ -1,43 +1,73 @@
 blueprint:
-  name: Neighbor extended motion lights V2
+  name: 💃 Neighbor extended motion activated lights V2.1 🕺
   description: >
-    ## Neighbor extended motion lights V2
+    ## 💃🕺🏃‍➡️🚶🐕🤺👶👩‍🦽🧍‍♀️🏃‍♀️‍➡️🏋️‍♀️🤸‍♂️👪💃
 
-    Temporarily do stuff based on motion here or in the next room.
+    ## Neighbor extended motion activated lights
+
+    _Never walk into a dark room again!_
+    
 
 
-    Useful when you want to save power and extend your lights lifetime, but do not want to walk into dark rooms. This blueprint gives you the impression of an always lit house. I'll admit it's cool to walk into a room that turns on the lights as you enter, but it does get old and can be impractical.
+    ---
+
+    ⏱️ Temporarily turn on the lights (or do other stuff) based on motion here or in the neighboring room.
+
+    🔋 Save power by automatically turning on/off lights
+
+    💡 Extend your bulbs lifetime
+
+    🌞 Turns off the lights automatically if it's already bright enough
+
+    ⏳ A timer entity that clearly displays how long until the lights turn off
+
+    ↔️ More flexible motion sensor placements
+    
+    _Since the lights are already on, when entering a room, the motion sensor doesn't _have to_ point towards where you enter the room!_
+
+
+
+    ---
+
+    <details><summary><b>👉 FIRST TIME SETUP 👈</b></summary>
+
+
+    Create an automation that let's you turn on the lights in not only the room you're in, but it's neighboring rooms!
+    
+    This is useful when you want to save power and extend your lights lifetime, but do not want to walk into dark rooms.
+    
+    This blueprint gives you the impression of an always lit house. I'll admit it's cool to walk into a room that turns on the lights as you enter, but it is unwelcoming to enter a dark room. It's better if it's already lit!
 
 
     Hope you find the blueprint useful 😃
 
 
+
     ---
 
+    _Do the following steps for each area you want to control._
 
-    ### Configuration:
+    If you have more than one motion sensor in the room:
+      1. Create a group helper entity
+          - Example name: `[area name] + Activity`
+          - Add the room's activity entities to it (motion, door/window, occupancy etc)
+          - <details><summary>YAML example</summary>
 
-    _Do the following steps repeatedly for each area you want to control._
-
-    1. Create a group helper entity
-        - Name it `[area name] + Activity`
-        - Add the room's activity entities to it (motion, door/window, occupancy etc)
-        - _This step is strictly only required if you have more than one activity sensor in the room, but doing it now makes it a lot easier to add more or replace entities later._
-        - Example:
-          ```yaml
-            - platform: group
-              name: "Living Room Activity"
-              unique_id: living_room_activity
-              device_class: occupancy
-              entities:
-                - binary_sensor.[some sensor]
-                - binary_sensor.[another sensor]
-          ```
+              ```yaml
+                - platform: group
+                  name: "Living Room Activity"
+                  unique_id: living_room_activity
+                  device_class: occupancy
+                  entities:
+                    - binary_sensor.[some sensor]
+                    - binary_sensor.[another sensor]
+            </details>
 
     2. Create another group helper entity
-        - Name it `[area name] + Neighbor Activity`
+        - Example name: `[area name] + Neighbor Activity`
         - Add any neighboring room's activity helpers (the ones you created in the previous step)
-        - Example:
+        - <details><summary>YAML example</summary>
+
           ```yaml
             - platform: group
               name: "Living Room Neighbor Activity"
@@ -45,330 +75,556 @@ blueprint:
               device_class: occupancy
               entities:
                 - binary_sensor.living_room_activity
-          ```
+          </details>
 
-    3. Create a timer helper for each room named: `[area name] + Light timer`
+    3. Create a timer helper for each room. Eg.: `[area name] + Light timer` 
 
-    4. Create a input toggle named: `[area name] + Automatic lights`
-        - Example:
+    4. Create an input boolean. Eg.: `[area name] + Automatic lights`
+
+        - <details><summary>YAML example</summary>
+
           ```yaml
               living_room_automatic_lights:
                 name: Living Room Automatic Lights?
                 icon: mdi:motion-sensor
           ```
+          </details>
+
+    4. If you don't have a global switch for turning off the automatic light behaviour, create one now. Eg.: `[area name] + Automatic lights`
+        - <details><summary>YAML example</summary>
+
+          ```yaml
+              automatic_lights:
+                name: Automatic Lights?
+                icon: mdi:motion-sensor
+          ```
+
+          </details>
+    </details>
 
   source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/automation/neighbor_extended_motion_lights.yaml
   domain: automation
 
   input:
-    activity:
-      name: Activity helper
-      description: The helper indicating activity in this area
-      selector:
-        entity:
-          multiple: false
-          domain: binary_sensor
-          device_class:
-            - occupancy
+    setup_section:
+      name: Setup
+      icon: mdi:cog-outline
+      collapsed: false
+      input:
+        timer:
+          name: Timer helper
+          description: A timer which counts down until the lights should be turned off again. Create one now if you haven't already.
+          selector:
+            entity:
+              domain: timer
 
-    neighbor_activity:
-      name: Neighbor activity helper
-      description: The helper indicating activity in neighboring areas
-      selector:
-        entity:
-          multiple: false
-          domain: binary_sensor
-          device_class:
-            - occupancy
+        automatic_lights:
+          name: Automatic lights (this area)
+          description: Enables/disables the automations for this area (Required due to technical limitations).
+          default: # Optional field
+          selector:
+            entity:
+              domain: input_boolean
 
-    timer:
-      name: Timer helper
-      description: A timer which counts down until the lights should be turned off again. Create one now if you haven't already.
-      selector:
-        entity:
-          domain: timer
+        automatic_lights_global:
+          name: Automatic lights (global)
+          description: Enables/disables the automations for this area. This is meant to be a a global toggle, used to disable motion activated lights all areas at once. (Required due to technical limitations).
+          default: # Optional field
+          selector:
+            entity:
+              domain: input_boolean
 
-    automatic_lights:
-      name: Automatic lights (this area)
-      description: Enables/disables the automations for this area (Required due to technical limitations).
-      selector:
-        entity:
-          domain: input_boolean
+    activity_section:
+      name: Activity
+      icon: mdi:motion-sensor
+      collapsed: false
+      input:
+        activity:
+          name: Activity helper
+          description: The helper indicating activity in this area. (Can't be left empty due to technical limitations. In HA entities used as triggers in automations must be defined. You can create a dummy helper as a workaround).
+          default: # Optional field
+          selector:
+            entity:
+              multiple: false
+              domain: binary_sensor
+              device_class:
+                - occupancy
 
-    automatic_lights_global:
-      name: Automatic lights (global)
-      description: Enables/disables the automations for this area. This is meant to be a a global toggle, used to disable motion activated lights all areas at once. (Required due to technical limitations).
-      selector:
-        entity:
-          domain: input_boolean
+        activity_actions:
+          name: Activity actions (Optional)
+          description: Ie. turn on the lights for a longer period of time.
+          default:
+          selector:
+            action: {}
 
-    activity_actions:
-      name: Activity actions (Optional)
-      description: Ie. turn on the lights for a longer period of time.
-      default:
-      selector:
-        action: {}
+        activity_duration:
+          name: Activity duration
+          description: "How many seconds after the detector has stopped detecting motion/occupancy before the timeout actions are run. Ie. how long the lights should be on before they are turned off. Recommended value: Set it to the time you expect a person can be in the room without being registered by the sensor. Usually 5 minutes (300 seconds) or more for normal motion detectors."
+          default: 300
+          selector:
+            number:
+              min: 0.0
+              max: 1500
+              mode: slider
+              step: 1.0
 
-    activity_duration:
-      name: Activity duration
-      description: "How many seconds after the detector has stopped detecting motion/occupancy before the timeout actions are run. Ie. how long the lights should be on before they are turned off. Recommended value: Set it to the time you expect a person can be in the room without being registered by the sensor. Usually 5 minutes (300 seconds) or more for normal motion detectors."
-      default: 300
-      selector:
-        number:
-          min: 0.0
-          max: 1500
-          mode: slider
-          step: 1.0
+    neighbor_activity_section:
+      name: Neighbor Activity
+      icon: mdi:motion-sensor
+      collapsed: true
+      input:
+        neighbor_activity:
+          name: Neighbor activity helper
+          description: The helper indicating activity in neighboring areas. (Can't be left empty due to technical limitations. In HA entities used as triggers in automations must be defined. You can create a dummy helper as a workaround).
+          default: # Optional field
+          selector:
+            entity:
+              multiple: false
+              domain: binary_sensor
+              device_class:
+                - occupancy
 
-    neighbor_activity_actions:
-      name: Neighbor activity actions (Optional)
-      description: Ie. turn on the lights for a shorter period of time. If anyone enters the already lit room, the on time will be extended as configured above.
-      default:
-      selector:
-        action: {}
+        neighbor_activity_actions:
+          name: Neighbor activity actions (Optional)
+          description: Ie. turn on the lights for a shorter period of time. If anyone enters the already lit room, the on time will be extended as configured above.
+          default:
+          selector:
+            action: {}
 
-    neighbor_activity_duration:
-      name: Neighbor activity duration
-      description: "For how many seconds after the detector has stopped detecting motion/occupancy the neighbor motion action should last before it's cleared. Recommended value: 15 seconds (which in reality can be ie. 15 + 10 seconds, as the motion sensor usually takes about 10 seconds to stop detecting)."
-      default: 15
-      selector:
-        number:
-          min: 0.0
-          max: 1500
-          mode: slider
-          step: 1.0
+        neighbor_activity_duration:
+          name: Neighbor activity duration
+          description: "For how many seconds after the detector has stopped detecting motion/occupancy the neighbor motion action should last before it's cleared. Recommended value: 15 seconds (which in reality can be ie. 15 + 10 seconds, as the motion sensor usually takes about 10 seconds to stop detecting)."
+          default: 15
+          selector:
+            number:
+              min: 0.0
+              max: 1500
+              mode: slider
+              step: 1.0
+    time_out_section:
+      name: Time out configuration
+      icon: mdi:motion-sensor-off
+      collapsed: false
+      input:
+        time_out_actions:
+          name: Time out actions
+          description: Ie. turn off the lights when the timer has run out.
+          default:
+          selector:
+            action: {}
+    
+    light_sensitive_section:
+      name: Light sensitivity
+      icon: mdi:brightness-7
+      collapsed: true
+      input:
+        light_sensitive:
+          name: Light sensitive
+          description: Turn the lights off when the room is already lit?
+          default: false
+          selector:
+            boolean:
 
-    time_out_actions:
-      name: Time out actions
-      description: Ie. turn off the lights when the timer has run out.
-      default:
-      selector:
-        action: {}
+        light_sensor:
+          name: Light Sensor
+          description: If added, the activity actions will only run when the sensor reports light levels lower than the threshold configured below.
+          default: # Optional
+          selector:
+            entity:
+              multiple: false
+              domain: sensor
+              device_class:
+                - illuminance
+
+        illuminance_threshold:
+          name: Illuminance Threshold
+          description: "Turns off the lights if the light level exceeds the selected threshold.\n\nFor the lights to turn on again, the levels has to drop 15% below the threshold again. (The extra 15% creates a deadzone, in which nothing happens to the lights. This is to avoid them turning on and off repeatedly when the light levels fluctuates just around the threshold)."
+          default: 400
+          selector:
+            number:
+              min: 100
+              max: 1000
+              mode: slider
+              step: 50
+
+trigger_variables:
+  activity: !input activity
+  neighbor_activity: !input neighbor_activity  
+  automatic_lights_input: !input automatic_lights
+  automatic_lights_global_input: !input automatic_lights_global
+
+trigger:
+  - platform: template
+    #value_template: "{{ is_state(activity if activity is string else '', 'on') }}"
+    value_template: "{{ is_state(activity, 'on') }}"
+    id: Activity # Id is used to calculate how long the timer should be and which actions to trigger
+
+  - platform: template
+    #value_template: "{{ is_state(neighbor_activity if neighbor_activity is string else '', 'on') }}"
+    value_template: "{{ is_state(neighbor_activity, 'on') }}"
+    id: Neighbor Activity
+
+  - platform: template
+    #value_template: "{{ is_state(automatic_lights_input if automatic_lights_input is string else '', 'off') }}"
+    value_template:  "{{ is_state(automatic_lights_input, 'off') }}"
+    id: Disabled
+
+  - platform: template
+    #value_template: "{{ is_state(automatic_lights_input if automatic_lights_input is string else '', 'on') }}"
+    value_template: "{{ is_state(automatic_lights_input, 'on') }}"
+    id: Enabled
+
+condition:
+  - condition: template
+    value_template: "{{ is_state(automatic_lights_input, 'on') if automatic_lights_input is not none else True }}" 
+    # "{{ is_state(automatic_lights_input, 'on') }}"
+  - condition: template
+    value_template: "{{ is_state(automatic_lights_global_input, 'on') if automatic_lights_global_input is not none else True }}"
+    # "{{ is_state(automatic_lights_global_input, 'on') }}"
 
 variables:
   activity_actions: !input activity_actions
   timer: !input timer
   neighbor_activity_duration: !input neighbor_activity_duration
+  activity: !input activity
+  neighbor_activity: !input neighbor_activity
+  light_sensor: !input light_sensor
+  light_sensitive: !input light_sensitive
+  illuminance_threshold: !input illuminance_threshold
 
-trigger:
-  - platform: state
-    entity_id: !input activity
-    to: "on"
-    # Id is used to calculate how long the timer should be and which actions to trigger
-    id: Activity
+  automatic_lights_input: !input automatic_lights
+  automatic_lights: "{{ states(automatic_lights_input) if automatic_lights_input is not none else 'on' }}"
 
-  - platform: state
-    entity_id: !input neighbor_activity
-    to: "on"
-    id: Neighbor activity
-
-  - platform: state
-    entity_id: !input automatic_lights
-    to: "off"
-    id: Disabled
-
-  - platform: state
-    entity_id: !input automatic_lights
-    to: "on"
-    id: Enabled
-
-condition:
-  - condition: state
-    entity_id: !input automatic_lights_global
-    state: "on"
+  automatic_lights_global_input: !input automatic_lights_global
+  automatic_lights_global: "{{ states(automatic_lights_global_input) if automatic_lights_global_input is not none else 'on' }}"
 
 action:
-  # - alias: "Did the motion status become disabled?"
-  #   if:
-  #     - condition: trigger
-  #       id: Disabled
-  #   then:
-  #     - service: timer.cancel
-  #       target:
-  #         entity_id: !input timer
   - variables:
       time_left: >
         {# As the value can be None, we set a default value to long ago #}
         {% set finishes_at = as_timestamp(state_attr(timer, "finishes_at")|default("2023-01-01T01:01:01+00:00", true)) %}
 
-        {# Remaining is an attribute on the timer, but it isn't updated. It just returns the timer's duration #}
-        {{ finishes_at - as_timestamp(now()) }}
+        {# Remaining is an attribute on the timer, but we can't use it as it isn't updated. It just returns the timer's duration #}
+        {# Let's set the time to minimum 0, round it and make the float into an int #}
+        {{ max(0, finishes_at - as_timestamp(now()) | round | int) }}
 
-  - alias: "Consider the triggers"
-    choose:
-      - conditions:
-          - alias: "Did the motion status become disabled?"
-            condition: trigger
-            id: Disabled
-        sequence:
-          - service: timer.cancel
-            target:
-              entity_id: !input timer
-          # We need to stop here, because we don't want the lights to be turned off when
-          # disabling the automatic lights toggle
-          - stop: Automatic lights were disabled
+      # Just evaluate some variables for easier debugging:
+      triggered_by: "{{ trigger.id }}"
 
-      - conditions:
-          # - condition: trigger
-          #   id: Activity
-
-          # We treat events triggered by Neighbor Activity the same as Activity
-          # when the Activity helper is on while Neighbor Activity helper is triggered.
-          # This is because the script must use mode=restart, and as a result of that
-          # a Neighbor Activity event can override an Activity event if it is triggered
-          # before the Activity triggered automation has time to start the timer
-          - alias: Run Activity actions
-            condition: or
-            conditions:
-              - alias: Triggered by activity
-                condition: trigger
-                id:
-                  - Activity
-              
-              - alias: Triggered by Neighbor Activity, while Activity is on
-                condition: and
-                conditions:
-                  - condition: trigger
-                    id:
-                      - Neighbor Activity
-                  - condition: state
-                    entity_id: !input activity
-                    state: "on"
-
-              - alias: Triggered by enabling automatic lights while activity is on
-                condition: and
-                conditions:
-                  - condition: trigger
-                    id:
-                      - Enabled
-                  - condition: state
-                    entity_id: !input activity
-                    state: "on"
-        sequence:
-          # Pause the timer, if it's already running
-          - service: timer.pause
-            data: {}
-            target:
-              entity_id: !input timer
-
-          # TODO: Should be an or statement:
-          # If the timer has run out OR neighbor activity actions was triggered previously
-          - alias: If the Activity turn on actions hasn't been run already (by a previous Activity event), then run them now
-            if:
-              - condition: template
-                value_template: >
-                  {# If the timer has run out #}
-                  {{ time_left < 1 }}
-            then:
-              # Trigger the motion actions
-              - choose: []
-                default: !input activity_actions
-
-          # Then wait for the detector to stop detecting motion...
-          - wait_for_trigger:
-            - platform: state
-              entity_id: !input activity
-              to: "off"
-
-          - alias: Check if there's neighbor activity
-            if:
-              - condition: state
-                entity_id: !input neighbor_activity
-                state: "on"
-            then:
-              # TODO: If we want to be perfectionists about it, we should store the current time in a variable,
-              # then, when we stop detecting neighbor activity, we should check if activity_duration - [time spent waiting] < neighbor_activity_duration
-              # if so, we should set the timer to neighbor_activity_duration instead of the activity_duration.
-
-              # Wait for neighbor activity to cease as well
-              - wait_for_trigger:
-                - platform: state
-                  entity_id: !input neighbor_activity
-                  to: "off"
-
-          # ... Before starting the timer
-          - service: timer.start
-            data:
-              duration: !input activity_duration
-            target:
-              entity_id: !input timer
-
-      - conditions:
-          - alias: Run Neighbor Activity actions
-            condition: or
-            conditions:
-              - alias: Triggered by Neighbor Activity
-                condition: trigger
-                id:
-                  - Neighbor activity
-
-              - alias: Or triggered by enabling automatic lights while Neighbor Activity is on
-                condition: and
-                conditions:
-                  - condition: trigger
-                    id:
-                      - Enabled
-                  - condition: state
-                    entity_id: !input neighbor_activity
-                    state: "on"
-        sequence:
-          # Pause the timer, if it's already running
-          - service: timer.pause
-            data: {}
-            target:
-              entity_id: !input timer
-
-          - alias: If the Neighbor Activity turn on actions hasn't been run already (by a previous event), then run them now
-            if:
-              - condition: template
-                value_template: >
-                  {# If the timer has run out #}
-                  {{ time_left < 1 }}
-            then:
-              # Trigger the neighbor motion actions
-              - choose: []
-                default: !input neighbor_activity_actions
+      # Had an issue where I got this error:
+      # Error rendering variables: AttributeError: 'NoneType' object has no attribute 'lower'
+      # Therefor added a more redundant check (as the activity entities are optional):
+      activity_detected: >
+        {{ is_state(activity, "on") if activity is defined and activity else false }}
+      neighbor_activity_detected: >
+        {{ is_state(neighbor_activity, "on") if neighbor_activity is defined and neighbor_activity else false }}
       
-          # Then wait for the detector to stop detecting motion
-          - wait_for_trigger:
-            - platform: state
-              entity_id: !input neighbor_activity
-              to: "off"
-          
-          # If there is more time left on the timer than neighbor_activity_duration, then don't update the timer's time
-          - if:
-            - condition: template
+      illuminance_test_interval: 300
+
+      # To avoid a situation where the lights turns on and off repeatedly (when the illuminance value fluctuates just around the threshold),
+      # we'll add a deadzone in which nothing happens. The illuminance has to pass the threshold to turn off the lighs, but with the deadzone
+      # it has to go below the threshold PLUS x% to turn on again.
+      # This problem should have been accounted for by the 300 second test interval - however if the sensor is triggered again, the script has to
+      # restart, and has no way to know how far the illuminance test had come.
+      illuminance_threshold_turn_on: "{{ illuminance_threshold | float * 0.85 }}"
+
+  - alias: "Run illuminance check parallel with activity handling"
+    parallel:
+    - alias: "Check the illuminance every x minutes and run turn on/off actions accordingly"
+      if:
+        - condition: template
+          value_template: "{{ light_sensitive and light_sensor }}"
+      then:
+        - repeat:
+            sequence:
+              - variables:
+                  illuminance_value: "{{ light_sensor and states(light_sensor) }}" # For debugging purposes only
+
+                  time_left: >
+                    {# As the value can be None, we set a default value to long ago #}
+                    {% set finishes_at = as_timestamp(state_attr(timer, "finishes_at")|default("2023-01-01T01:01:01+00:00", true)) %}
+
+                    {# Remaining is an attribute on the timer, but it isn't updated. It just returns the timer's duration #}
+                    {{ max(0, finishes_at - as_timestamp(now()) | round | int) }}
+                    
+                  repeat_delay: >
+                    {# If the timer hasn't started yet, set the timeout to the default delay #}
+                    {% if time_left < illuminance_test_interval and is_state(timer, 'active') %}
+                      {{ time_left | int }}
+                    {% else %}
+                      {{ illuminance_test_interval }}
+                    {% endif %}
+
+                  automatic_lights: "{{ states(automatic_lights_input) if automatic_lights_input is not none else 'on' }}"
+                  automatic_lights_global: "{{ states(automatic_lights_global_input) if automatic_lights_global_input is not none else 'on' }}"
+              
+              # Start with the delay, as the same actions run immediately in parallel 
+              - delay:
+                  seconds: "{{ repeat_delay }}"
+
+              - alias: If automatic lights are enabled
+                if:
+                  - condition: template
+                    value_template: "{{ automatic_lights_global == 'on' }}"
+                  - condition: template
+                    value_template: "{{ automatic_lights == 'on' }}"
+                then:
+                  - alias: If below the threshold, turn on
+                    if:
+                      - condition: template
+                        value_template: "{{ light_sensor and states(light_sensor) | float(0) < illuminance_threshold_turn_on }}"
+                    then:
+                      # Choose wheather to run activity or neighbor activity actions
+                      - choose:
+                        - conditions:
+                            # We treat events triggered by Neighbor Activity the same as Activity
+                            # when the Activity helper is on while Neighbor Activity helper is triggered.
+                            # This is because the script must use mode=restart, and as a result of that
+                            # a Neighbor Activity event can override an Activity event if it is triggered
+                            # before the Activity triggered automation has time to start the timer
+                            - alias: Run Activity actions
+                              condition: template
+                              value_template: >
+                                {#
+                                  If triggered by Activity or
+                                  triggered by Neighbor Activity while Activity is on or
+                                  triggered by Enabled while Activity is on
+                                #}
+                                {{
+                                  trigger.id == "Activity" or
+                                  trigger.id == "Neighbor Activity" and activity_detected or
+                                  trigger.id == "Enabled" and activity_detected
+                                }}
+                                
+                          sequence:
+                            - choose: []
+                              default: !input activity_actions
+
+                        - conditions:
+                            - alias: Run Neighbor Activity actions
+                              condition: template
+                              value_template: >
+                                {# If triggered by Neighbor Activity || triggered by Enabled while Neighbor Activity is on #}
+                                {{
+                                  trigger.id == "Neighbor Activity" or
+                                  trigger.id == "Enabled" and neighbor_activity_detected
+                                }}
+
+                          sequence:
+                            - choose: []
+                              default: !input neighbor_activity_actions
+
+                    else:
+                      - alias: If above the threshold, turn off the lights
+                        if:
+                          - condition: template
+                            value_template: "{{ light_sensor and states(light_sensor) > illuminance_threshold }}"
+                        then:
+                          # Turn off
+                          - choose: []
+                            default: !input time_out_actions
+                  
+            until:
+              - condition: state
+                entity_id: !input timer
+                state: idle
+
+    - alias: "Consider the triggers"
+      choose:
+        - conditions:
+            - alias: "Did the motion status become disabled?"
+              condition: trigger
+              id: Disabled
+          sequence:
+            - service: timer.cancel
+              target:
+                entity_id: !input timer
+            # We need to stop here, because we don't want the lights to be turned off when
+            # disabling the automatic lights toggle
+            - stop: Automatic lights was disabled
+
+        - conditions:
+            # We treat events triggered by Neighbor Activity the same as Activity
+            # when the Activity helper is on while Neighbor Activity helper is triggered.
+            # This is because the script must use mode=restart, and as a result of that
+            # a Neighbor Activity event can override an Activity event if it is triggered
+            # before the Activity triggered automation has time to start the timer
+            - alias: Run Activity actions
+              condition: template
               value_template: >
-                {{ neighbor_activity_duration > time_left }}
-            then:
-              # The neighbor_activity_duration is longer than the remaining time of the timer.
-              # Start the timer with neightbor_activity_duration as the duration
-              - service: timer.start
-                data:
-                  duration: !input neighbor_activity_duration
-                target:
-                  entity_id: !input timer
-            else:
-              # Resume the timer without updating the time left
-              - service: timer.start
-                target:
-                  entity_id: !input timer
+                {#
+                  If triggered by Activity or
+                  triggered by Neighbor Activity while Activity is on or
+                  triggered by Enabled while Activity is on
+                #}
+                {{
+                  trigger.id == "Activity" or
+                  trigger.id == "Neighbor Activity" and activity_detected or
+                  trigger.id == "Enabled" and activity_detected
+                }}
+                
+          sequence:
+            # Pause the timer, if it's already running
+            - service: timer.pause
+              data: {}
+              target:
+                entity_id: !input timer
 
-  - alias: "Wait for the timer to run out"
-    wait_for_trigger:
-      - platform: event
-        event_type: timer.finished
-        event_data:
-          entity_id: !input timer
+            # TODO: Should be an or statement:
+            # If the timer has run out OR neighbor activity actions was triggered previously
+            - alias: If the Activity turn on actions hasn't been run already (by a previous Activity event), then run them now
+              if:
+                - condition: template
+                  value_template: >
+                    {# If the timer has run out #}
+                    {{ time_left < 1 }}
+              then:
+                - alias: Only run if (below illuminance_threshold_turn_on and light_sensitive) or (while not light_sensitive)
+                  if:
+                    - condition: template
+                      value_template: "{{ light_sensor and states(light_sensor) | float(0) < illuminance_threshold_turn_on and light_sensitive or not light_sensitive }}"
+                  then:
+                    # Trigger the activity actions
+                    - choose: []
+                      default: !input activity_actions
+                  else:
+                    - alias: Only turn off the lights if (a light_sensor is defined and) the light_sensor's state is above the illuminance_threshold
+                      if:
+                        - condition: template
+                          value_template: "{{ light_sensor and states(light_sensor) > illuminance_threshold }}"
+                      then:
+                        - choose: []
+                          default: !input time_out_actions
+                      else:
+                        - alias: Else do nothing with the lights, as we are in the deadzone.
+                          action: logbook.log
+                          metadata: {}
+                          data:
+                            domain: motion
+                            entity_id: "{{ this.entity_id }}"
+                            name: Deadzone. Don't change the lights.
+                            message: >-
+                              The illuminance value was below the threshold to turn on, but not far enough to turn off.
 
-  - alias: "Execute time out actions as long as the automatic_lights and automatic_lights_global is still on"
+            
+            # Run a parallel action here with a recurring timer checking the illuminance.
+            # If !input activity is still "on"
+              # If above, turn off the lights (run the timout action).
+              # If under, turn on the lights (run the activity/neighbor activity action)
+
+            # The actions above, must be duplicated for the neighbor trigger
+
+            - alias: Then wait for the detector to stop detecting motion
+              wait_template: "{{ states(activity) == 'off' }}"
+
+            - alias: Check if there's neighbor activity
+              if:
+                - condition: template
+                  value_template: "{{ states(neighbor_activity) == 'on' }}"
+              then:
+                # TODO: If we want to be perfectionists about it, we should store the current time in a variable,
+                # then, when we stop detecting neighbor activity, we should check if activity_duration - [time spent waiting] < neighbor_activity_duration
+                # if so, we should set the timer to neighbor_activity_duration instead of the activity_duration.
+
+                # Wait for neighbor activity to cease as well
+                - wait_template: "{{ states(neighbor_activity) == 'off' }}"
+
+            # ... Before starting the timer
+            - service: timer.start
+              data:
+                duration: !input activity_duration
+              target:
+                entity_id: !input timer
+
+        - conditions:
+            - alias: Run Neighbor Activity actions
+              condition: template
+              value_template: >
+                {# If triggered by Neighbor Activity || triggered by Enabled while Neighbor Activity is on #}
+                {{
+                  trigger.id == "Neighbor Activity" or
+                  trigger.id == "Enabled" and neighbor_activity_detected
+                }}
+
+          sequence:
+            # Pause the timer, if it's already running
+            - service: timer.pause
+              data: {}
+              target:
+                entity_id: !input timer
+
+            - alias: If the Neighbor Activity turn on actions hasn't been run already (by a previous event), then run them now
+              if:
+                - condition: template
+                  value_template: >
+                    {# If the timer has run out #}
+                    {{ time_left < 1 }}
+              then:
+                - alias: Only run if (below illuminance_threshold_turn_on and light_sensitive) or (while not light_sensitive)
+                  if:
+                    - condition: template
+                      value_template: "{{ light_sensor and states(light_sensor) | float(0) < illuminance_threshold_turn_on and light_sensitive or not light_sensitive }}"
+                  then:
+                    # Trigger the neighbor motion actions
+                    - choose: []
+                      default: !input neighbor_activity_actions
+        
+            # Then wait for the detector to stop detecting motion
+            - wait_template: "{{ states(neighbor_activity) == 'off' }}"
+
+            - variables:
+                automatic_lights: "{{ states(automatic_lights_input) if automatic_lights_input is not none else 'on' }}"
+                automatic_lights_global: "{{ states(automatic_lights_global_input) if automatic_lights_global_input is not none else 'on' }}"
+            
+            # If there is more time left on the timer than neighbor_activity_duration, then don't update the timer's time
+            - if:
+              - condition: template
+                value_template: >
+                  {{ neighbor_activity_duration > time_left }}
+              - condition: template
+                value_template: "{{ automatic_lights_global == 'on' }}"
+              - condition: template
+                value_template: "{{ automatic_lights == 'on' }}"
+              then:
+                # The neighbor_activity_duration is longer than the remaining time of the timer.
+                # Start the timer with neightbor_activity_duration as the duration
+                - service: timer.start
+                  data:
+                    duration: !input neighbor_activity_duration
+                  target:
+                    entity_id: !input timer
+              else:
+                # Resume the timer without updating the time left
+                - service: timer.start
+                  target:
+                    entity_id: !input timer
+
+  - alias: If timer has not run out, wait for it to run out
+    # This shouldn't happen. The parallel action above has to finish all execution before continuing. The condition for ending the loop, is waiting for the timer to run out.
     if:
-      - condition: state
-        entity_id: !input automatic_lights_global
-        state: "on"
-      - condition: state
-        entity_id: !input automatic_lights
-        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: !input timer
+            state: idle
+    then:
+      - alias: "Wait for the timer to run out"
+        wait_for_trigger:
+          - platform: event
+            event_type: timer.finished
+            event_data:
+              entity_id: !input timer
+
+  - variables:
+      automatic_lights: "{{ states(automatic_lights_input) if automatic_lights_input is not none else 'on' }}"
+      automatic_lights_global: "{{ states(automatic_lights_global_input) if automatic_lights_global_input is not none else 'on' }}"
+
+  - alias: "Execute time out actions as long as the automatic_lights and automatic_lights_global are still on"
+    if:
+      - condition: template
+        value_template: "{{ automatic_lights_global == 'on' }}"
+      - condition: template
+        value_template: "{{ automatic_lights == 'on' }}"
     then:
       - choose: []
         default: !input time_out_actions
