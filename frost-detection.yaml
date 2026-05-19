@@ -13,6 +13,7 @@ blueprint:
     3. Add an exclude area field
     4. Do the same for the fire-detection blueprint
   domain: automation
+  source_url: https://github.com/etokheim/home-assistant-automations/blob/master/frost-detection.yaml
   input:
     temperature_threshold:
       name: Temperature threshold

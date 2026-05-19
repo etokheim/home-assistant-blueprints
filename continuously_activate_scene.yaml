@@ -9,7 +9,7 @@ blueprint:
     The automation automatically stops if:
     - The lights in the area have been turned off
     - (Optional) The scene's `brightness_modifier` or `transition_modifier` is not 0
-  source_url: https://github.com/etokheim/home-assistant-blueprints/blob/master/script/continuously_activate_scene.yaml
+  source_url: https://github.com/etokheim/home-assistant-automations/blob/master/continuously_activate_scene.yaml
   author: Erling Tokheim
   domain: automation
 
